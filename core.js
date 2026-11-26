@@ -1,6 +1,6 @@
 'use strict';
 /* ====== إعداد اختياري: ضع معرّف التطبيق هنا لتجاوز شاشة الإعداد ====== */
-const CLIENT_ID = '';
+const CLIENT_ID = '77c5b73c-b1b1-4b0b-9f0b-d19488d481e8';
 /* ===================================================================== */
 
 const SCOPES = 'Files.Read Files.ReadWrite.AppFolder User.Read offline_access';
