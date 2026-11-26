@@ -1,6 +1,6 @@
 // يحفظ واجهة التطبيق فقط لتفتح بسرعة وبدون إنترنت. لا يحفظ الصوتيات ولا بيانات ون درايف.
-const CACHE = 'maktabati-v2';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg', './styles.css', './core.js', './views.js', './player.js'];
+const CACHE = 'maktabati-v4';
+const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg', './styles.css', './core.js', './art.js', './views.js', './player.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });
 self.addEventListener('fetch', e => {

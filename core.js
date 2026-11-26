@@ -34,10 +34,12 @@ const SS = {
   set(k, v) { try { sessionStorage.setItem(k, v); } catch {} },
   del(k) { try { sessionStorage.removeItem(k); } catch {} }
 };
-function safeUrl(u) { return typeof u === 'string' && /^https:\/\//.test(u) ? u.replace(/["'()\\\s]/g, c => encodeURIComponent(c)) : ''; }
-function coverStyle(name, thumb) { const u = safeUrl(thumb); return `background-image:${u ? `url("${u}"), ` : ''}${grad(name)}`; }
-function cover(name, thumb, cls = '', label = true) {
-  return `<div class="cover ${cls}" style="${coverStyle(name, thumb)}">${label && !safeUrl(thumb) ? esc(base(name)) : ''}</div>`;
+function safeUrl(u) { return typeof u === 'string' && /^(https:\/\/|blob:)/.test(u) ? u.replace(/["'()\\\s]/g, c => encodeURIComponent(c)) : ''; }
+function coverStyle(name, thumb) { const u = safeUrl(thumb); return `background-image:${u ? `url('${u}'), ` : ''}${grad(name)}`; }
+function cover(name, thumb, cls = '', label = true, it = null) {
+  const u = thumb || (it && typeof ART !== 'undefined' ? ART.peek(it) : ''), s = safeUrl(u);
+  const lazy = !s && it ? ` data-art="${esc(it.id)}" data-an="${esc(name)}"${it.folder ? ' data-af="1"' : ''}` : '';
+  return `<div class="cover ${cls}${s ? ' has-art' : ''}" style="${coverStyle(name, u)}"${lazy}>${label && !s ? esc(base(name)) : ''}</div>`;
 }
 
 /* ---------- icons ---------- */
@@ -67,9 +69,18 @@ const I = {
   trash: sv('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>', { s: 16 }),
   clock: sv('<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>', { s: 16, w: 2 }),
   dl: sv('<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>', { s: 16 }),
-  folder: sv('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', { s: 18 })
+  folder: sv('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', { s: 18 }),
+  tag: sv('<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.4"/>', { s: 22 }),
+  tagS: sv('<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.4"/>', { s: 18 }),
+  up: sv('<path d="M6 15l6-6 6 6"/>', { w: 2.2 }),
+  restart: sv('<path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/>', { s: 18 }),
+  open: sv('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', { s: 18 }),
+  doc: sv('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>', { s: 18 })
 };
 const eq = '<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>';
+/* شعار الموقع: إطار أصفر داخله سماعة وموجات صوت تتحرك أثناء التشغيل */
+const LOGO_FRAME = 'M0 178V49A49 49 0 0 1 49 0h106v178zM18.3 159.7h118.4V18.3H50A31.7 31.7 0 0 0 18.3 50z';
+const bookWave = (s = 28) => `<svg class="bw" width="${Math.round(s * .87)}" height="${s}" viewBox="0 0 155 178" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="${LOGO_FRAME}"/><path d="M40 104a37.5 37.5 0 0 1 75 0" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/><rect x="32" y="97" width="19" height="38" rx="8" fill="currentColor"/><rect x="104" y="97" width="19" height="38" rx="8" fill="currentColor"/><g fill="currentColor"><rect class="w w1" x="60" y="104" width="6" height="22" rx="3"/><rect class="w w2" x="70" y="98" width="6" height="34" rx="3"/><rect class="w w3" x="80" y="104" width="6" height="22" rx="3"/><rect class="w w4" x="90" y="109" width="6" height="12" rx="3"/></g></svg>`;
 
 /* ---------- config & state ---------- */
 let cfg = Object.assign({ clientId: CLIENT_ID, rootPath: '', rootId: '', rootIdPath: null, demo: false, skip: 30, pauseOnNote: true, lite: false, speed: 1 }, LS.get('cfg', {}));
@@ -77,7 +88,8 @@ if (CLIENT_ID) cfg.clientId = CLIENT_ID;
 const saveCfg = () => LS.set('cfg', cfg);
 let tok = LS.get('tok', null);
 let data = LS.get('data', null) || {};
-for (const k of ['progress', 'marks', 'notes', 'recents']) data[k] = data[k] || {};
+const DKEYS = ['progress', 'marks', 'notes', 'recents', 'tags', 'tagged'];
+for (const k of DKEYS) data[k] = data[k] || {};
 const known = new Map();
 const memKids = new Map();
 let covers = LS.get('covers', {});
@@ -209,7 +221,7 @@ const loggedIn = () => cfg.demo || !!tok;
 
 /* ---------- sync (bookmarks, notes, progress → OneDrive app folder) ---------- */
 function mergeInto(a, b) {
-  for (const k of ['progress', 'marks', 'notes', 'recents']) {
+  for (const k of DKEYS) {
     a[k] = a[k] || {}; const bk = (b && b[k]) || {};
     for (const id in bk) if (!a[k][id] || (bk[id].u || 0) > (a[k][id].u || 0)) a[k][id] = bk[id];
   }
@@ -233,12 +245,12 @@ async function doSync() {
   if (syncing) { scheduleSync(5000); return; }
   syncing = true;
   try {
-    const before = JSON.stringify([data.marks, data.notes]);
+    const before = JSON.stringify([data.marks, data.notes, data.tags, data.tagged]);
     const remote = await live.load();
     if (remote) mergeInto(data, remote);
     prune(); persist(); lastPull = Date.now();
     await live.save(data);
-    if (JSON.stringify([data.marks, data.notes]) !== before) { renderPanel(); renderMarkers(); const r = route(); if (r.name === 'marks' || r.name === 'notes') render(); }
+    if (JSON.stringify([data.marks, data.notes, data.tags, data.tagged]) !== before) { renderPanel(); renderMarkers(); const r = route(); if (['marks', 'notes', 'tags', 'tag', 'settings'].includes(r.name)) render(); }
   } catch (e) { console.warn('sync', e); if (e.name === 'AuthError') authToast(); }
   finally { syncing = false; }
 }
